@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	hfutils "github.com/bakkerme/hyperfocus-utils"
 	"github.com/google/go-github/v39/github"
@@ -26,29 +27,52 @@ func main() {
 
 	client := github.NewClient(tc)
 
-	notifications, _, err := client.Activity.ListNotifications(ctx, nil)
+	assignedPRs, err := getAssignedReviews(ctx, client, "bakkerme")
 	if err != nil {
 		panic(err)
 	}
+	logPRs(assignedPRs)
 
-	for _, notification := range notifications {
-		// fmt.Println(notification)
-		if notification.Unread != nil && !(*notification.Unread) {
-			continue
-		}
+	fmt.Println("-------")
+	fmt.Println("")
 
-		fmt.Println(notification.GetURL())
-		fmt.Println(notification.GetReason())
-		fmt.Println(notification.GetRepository().GetName())
-		fmt.Println(notification.GetSubject().GetTitle())
-		fmt.Println("                      ")
+	allPRs, err := getReviews(ctx, client, "bakkerme")
+	if err != nil {
+		panic(err)
 	}
+	logPRs(allPRs)
 
-	// list all repositories for the authenticated user
-	// repos, _, err := client.Repositories.List(ctx, "", nil)
-	// if err != nil {
-	// 	panic(err)
-	// }
+	// litter.Dump(prs)
+}
 
-	// fmt.Println(repos)
+func getAssignedReviews(ctx context.Context, client *github.Client, username string) ([]*github.Issue, error) {
+	result, _, err := client.Search.Issues(
+		ctx,
+		fmt.Sprintf("is:open is:pr review-requested:%s", username),
+		&github.SearchOptions{Sort: "created", Order: "asc", ListOptions: github.ListOptions{PerPage: 100}},
+	)
+
+	return result.Issues, err
+}
+
+func getReviews(ctx context.Context, client *github.Client, username string) ([]*github.Issue, error) {
+	result, _, err := client.Search.Issues(
+		ctx,
+		fmt.Sprintf("is:pr reviewed-by:%s", username),
+		&github.SearchOptions{Sort: "created", Order: "asc", ListOptions: github.ListOptions{PerPage: 100}},
+	)
+
+	return result.Issues, err
+}
+
+func logPRs(prs []*github.Issue) {
+	for _, pr := range prs {
+		fmt.Println("Issue:", *pr.Title)
+
+		repoName := strings.Replace(*pr.RepositoryURL, "https://api.github.com/repos/", "", 1)
+		fmt.Println("Repo:", repoName)
+		fmt.Println("URL:", *pr.HTMLURL)
+		fmt.Println("State:", *pr.State)
+		fmt.Println("")
+	}
 }
